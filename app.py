@@ -5,19 +5,33 @@ import cv2
 from PIL import Image
 import os
 
-app=Flask(__name__)
-UPLOAD_FOLDER = 'uploads'
+app = Flask(__name__)
+
+# Upload folder
+UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
-device="cuda" if torch.cuda.is_available() else "cpu"
+# Device (CPU recommended for deployment)
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
-model, preprocess = clip.load("ViT-B/32", device=device)
-model.eval()
+# Lazy loading (IMPORTANT)
+model = None
+preprocess = None
+
+def load_model():
+    global model, preprocess
+    if model is None:
+        model, preprocess = clip.load("ViT-B/32", device=device)
+        model.eval()
 
 def ai_probability(img):
-    image=preprocess(Image.fromarray(img)).unsqueeze(0).to(device)
+    load_model()
 
-    text = clip.tokenize(["a real photograph", "an AI-generated image"]).to(device)
+    image = preprocess(Image.fromarray(img)).unsqueeze(0).to(device)
+    text = clip.tokenize(
+        ["a real photograph", "an AI-generated image"]
+    ).to(device)
 
     with torch.no_grad():
         image_features = model.encode_image(image)
@@ -27,49 +41,70 @@ def ai_probability(img):
     return similarity[0][1].item()
 
 def analyze_video(path):
-    cap=cv2.VideoCapture(path)
-    score=0
-    frames=0
+    cap = cv2.VideoCapture(path)
+    score = 0
+    frames = 0
 
     while cap.isOpened():
-        ret, frame=cap.read()
+        ret, frame = cap.read()
         if not ret:
             break
 
-        score+=ai_probability(frame)
-        frames+=1
+        score += ai_probability(frame)
+        frames += 1
 
-        if frames>=30:
+        # Limit frames for speed & stability
+        if frames >= 30:
             break
 
     cap.release()
 
-    ai_frames=int((score/frames)*100)
-    return ai_frames, 100 - ai_frames
+    if frames == 0:
+        return 0, 100
+
+    ai_percent = int((score / frames) * 100)
+    real_percent = 100 - ai_percent
+
+    return ai_percent, real_percent
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    result=None
-    ai_frames=0
-    real_frames=0
+    result = None
+    ai_frames = 0
+    real_frames = 0
 
-    if request.method=="POST":
-        file=request.files["file"]
-        path=os.path.join(UPLOAD_FOLDER, file.filename)
+    if request.method == "POST":
+        file = request.files["file"]
+
+        if file.filename == "":
+            return render_template(
+                "index.html",
+                result="No file selected",
+                ai_frames=0,
+                real_frames=0,
+            )
+
+        path = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
         file.save(path)
 
-        ext = file.filename.lower().split('.')[-1]
+        ext = file.filename.lower().split(".")[-1]
 
         if ext in ["jpg", "jpeg", "png"]:
-            img =cv2.imread(path)
-            prob=ai_probability(img)
-            ai_frames=int(prob*100)
-            real_frames=100 - ai_frames
+            img = cv2.imread(path)
+            prob = ai_probability(img)
+            ai_frames = int(prob * 100)
+            real_frames = 100 - ai_frames
         else:
-            ai_frames, real_frames=analyze_video(path)
+            ai_frames, real_frames = analyze_video(path)
 
-        result="AI Generated Content" if ai_frames >=50 else "Real Content"
-    return render_template("index.html", result=result, ai_frames=ai_frames, real_frames=real_frames)
+        result = "AI Generated Content" if ai_frames >= 50 else "Real Content"
 
-if __name__=="__main__":
-    app.run(debug=True)
+    return render_template(
+        "index.html",
+        result=result,
+        ai_frames=ai_frames,
+        real_frames=real_frames,
+    )
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)
