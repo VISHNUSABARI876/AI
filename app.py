@@ -7,9 +7,25 @@ from PIL import Image
 import os
 import time
 import json
+import mimetypes
+
+# Fix Windows MIME type registration for JavaScript & CSS modules
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("application/javascript", ".mjs")
+mimetypes.add_type("text/css", ".css")
 
 app = Flask(__name__, static_folder="dist", static_url_path="")
 CORS(app)  # Enable CORS for React frontend
+
+@app.after_request
+def set_mime_types(response):
+    path = request.path.lower()
+    if path.endswith(".js") or path.endswith(".mjs"):
+        response.headers["Content-Type"] = "application/javascript; charset=utf-8"
+    elif path.endswith(".css"):
+        response.headers["Content-Type"] = "text/css; charset=utf-8"
+    return response
+
 
 # Upload folder
 UPLOAD_FOLDER = "uploads"
