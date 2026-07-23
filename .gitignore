@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+dist-ssr/
+*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Environment variables
+.env
+.env.local
+
+# User uploads & data logs
+uploads/*
+!uploads/.gitkeep
+detection_history.json
+
+# IDE & OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

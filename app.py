@@ -1,21 +1,43 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, send_from_directory, jsonify
+from flask_cors import CORS
 import torch
 import clip
 import cv2
 from PIL import Image
 import os
+import time
+import json
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="dist", static_url_path="")
+CORS(app)  # Enable CORS for React frontend
 
 # Upload folder
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
-# Device (CPU recommended for deployment)
+# In-memory history store (and disk backup)
+HISTORY_FILE = "detection_history.json"
+detection_history = []
+
+if os.path.exists(HISTORY_FILE):
+    try:
+        with open(HISTORY_FILE, "r") as f:
+            detection_history = json.load(f)
+    except Exception:
+        detection_history = []
+
+def save_history():
+    try:
+        with open(HISTORY_FILE, "w") as f:
+            json.dump(detection_history, f, indent=2)
+    except Exception as e:
+        print("Error saving history:", e)
+
+# Device
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-# Lazy loading (IMPORTANT)
+# Lazy loading
 model = None
 preprocess = None
 
@@ -53,8 +75,7 @@ def analyze_video(path):
         score += ai_probability(frame)
         frames += 1
 
-        # Limit frames for speed & stability
-        if frames >= 30:
+        if frames >= 30:   # limit frames
             break
 
     cap.release()
@@ -67,44 +88,95 @@ def analyze_video(path):
 
     return ai_percent, real_percent
 
-@app.route("/", methods=["GET", "POST"])
-def index():
-    result = None
-    ai_frames = 0
-    real_frames = 0
+@app.route("/uploads/<filename>")
+def uploaded_file(filename):
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
-    if request.method == "POST":
-        file = request.files["file"]
+@app.route("/api/analyze", methods=["POST"])
+def api_analyze():
+    if "file" not in request.files:
+        return jsonify({"error": "No file part in request"}), 400
 
-        if file.filename == "":
-            return render_template(
-                "index.html",
-                result="No file selected",
-                ai_frames=0,
-                real_frames=0,
-            )
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "No file selected"}), 400
 
-        path = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
-        file.save(path)
+    filename = file.filename
+    path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    file.save(path)
 
-        ext = file.filename.lower().split(".")[-1]
+    ext = filename.lower().split(".")[-1]
+    is_image = ext in ["jpg", "jpeg", "png", "webp", "bmp"]
 
-        if ext in ["jpg", "jpeg", "png"]:
-            img = cv2.imread(path)
-            prob = ai_probability(img)
-            ai_frames = int(prob * 100)
-            real_frames = 100 - ai_frames
-        else:
-            ai_frames, real_frames = analyze_video(path)
+    if is_image:
+        img = cv2.imread(path)
+        if img is None:
+            return jsonify({"error": "Could not read image file"}), 400
+        prob = ai_probability(img)
+        ai_frames = int(prob * 100)
+        real_percent = 100 - ai_frames
+        media_type = "image"
+    else:
+        ai_frames, real_percent = analyze_video(path)
+        media_type = "video"
 
-        result = "AI Generated Content" if ai_frames >= 50 else "Real Content"
+    result_label = "AI Generated Content" if ai_frames >= 50 else "Real Content"
 
-    return render_template(
-        "index.html",
-        result=result,
-        ai_frames=ai_frames,
-        real_frames=real_frames,
-    )
+    history_item = {
+        "id": int(time.time() * 1000),
+        "filename": filename,
+        "file_url": f"/uploads/{filename}",
+        "media_type": media_type,
+        "result": result_label,
+        "ai_percent": ai_frames,
+        "real_percent": real_percent,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+    detection_history.insert(0, history_item)
+    save_history()
+
+    return jsonify({
+        "success": True,
+        "data": history_item
+    })
+
+@app.route("/api/history", methods=["GET"])
+def api_history():
+    return jsonify({
+        "success": True,
+        "history": detection_history
+    })
+
+@app.route("/api/stats", methods=["GET"])
+def api_stats():
+    total_scans = len(detection_history)
+    ai_count = sum(1 for item in detection_history if item["result"] == "AI Generated Content")
+    real_count = total_scans - ai_count
+    avg_ai_score = round(sum(item["ai_percent"] for item in detection_history) / max(1, total_scans), 1)
+
+    return jsonify({
+        "success": True,
+        "total_scans": total_scans,
+        "ai_count": ai_count,
+        "real_count": real_count,
+        "avg_ai_score": avg_ai_score
+    })
+
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_react(path):
+    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    elif os.path.exists(os.path.join(app.static_folder, "index.html")):
+        return send_from_directory(app.static_folder, "index.html")
+    else:
+        # Fallback to legacy index or basic info if dist is not built yet
+        if os.path.exists("templates/index.html"):
+            return render_template("index.html")
+        return "React Frontend is building or ready on Vite Dev Server (port 5173)."
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
+
+
