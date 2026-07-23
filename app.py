@@ -10,20 +10,40 @@ import json
 import mimetypes
 
 # Fix Windows MIME type registration for JavaScript & CSS modules
-mimetypes.add_type("application/javascript", ".js")
-mimetypes.add_type("application/javascript", ".mjs")
-mimetypes.add_type("text/css", ".css")
+mimetypes.init()
+mimetypes.types_map['.js'] = 'application/javascript'
+mimetypes.types_map['.mjs'] = 'application/javascript'
+mimetypes.types_map['.jsx'] = 'application/javascript'
+mimetypes.types_map['.ts'] = 'application/javascript'
+mimetypes.types_map['.tsx'] = 'application/javascript'
+mimetypes.types_map['.css'] = 'text/css'
+mimetypes.types_map['.json'] = 'application/json'
+mimetypes.types_map['.wasm'] = 'application/wasm'
+mimetypes.types_map['.svg'] = 'image/svg+xml'
+
+for ext in ['.js', '.mjs', '.jsx', '.ts', '.tsx']:
+    mimetypes.add_type('application/javascript', ext)
+mimetypes.add_type('text/css', '.css')
+mimetypes.add_type('application/json', '.json')
+mimetypes.add_type('application/wasm', '.wasm')
+mimetypes.add_type('image/svg+xml', '.svg')
 
 app = Flask(__name__, static_folder="dist", static_url_path="")
 CORS(app)  # Enable CORS for React frontend
 
 @app.after_request
 def set_mime_types(response):
-    path = request.path.lower()
-    if path.endswith(".js") or path.endswith(".mjs"):
+    path = request.path.lower().split('?')[0]
+    if any(path.endswith(ext) for ext in ['.js', '.mjs', '.jsx', '.ts', '.tsx']):
         response.headers["Content-Type"] = "application/javascript; charset=utf-8"
     elif path.endswith(".css"):
         response.headers["Content-Type"] = "text/css; charset=utf-8"
+    elif path.endswith(".wasm"):
+        response.headers["Content-Type"] = "application/wasm"
+    elif path.endswith(".json"):
+        response.headers["Content-Type"] = "application/json; charset=utf-8"
+    elif path.endswith(".svg"):
+        response.headers["Content-Type"] = "image/svg+xml"
     return response
 
 
@@ -108,7 +128,7 @@ def analyze_video(path):
 def uploaded_file(filename):
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
-@app.route("/api/analyze", methods=["POST"])
+@app.route("/api/analyze", methods=["POST"], strict_slashes=False)
 def api_analyze():
     if "file" not in request.files:
         return jsonify({"error": "No file part in request"}), 400
@@ -157,14 +177,14 @@ def api_analyze():
         "data": history_item
     })
 
-@app.route("/api/history", methods=["GET"])
+@app.route("/api/history", methods=["GET"], strict_slashes=False)
 def api_history():
     return jsonify({
         "success": True,
         "history": detection_history
     })
 
-@app.route("/api/stats", methods=["GET"])
+@app.route("/api/stats", methods=["GET"], strict_slashes=False)
 def api_stats():
     total_scans = len(detection_history)
     ai_count = sum(1 for item in detection_history if item["result"] == "AI Generated Content")
@@ -179,18 +199,37 @@ def api_stats():
         "avg_ai_score": avg_ai_score
     })
 
+def get_mimetype(filepath):
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext in ['.js', '.mjs', '.jsx', '.ts', '.tsx']:
+        return 'application/javascript; charset=utf-8'
+    elif ext == '.css':
+        return 'text/css; charset=utf-8'
+    elif ext == '.json':
+        return 'application/json; charset=utf-8'
+    elif ext == '.wasm':
+        return 'application/wasm'
+    elif ext == '.svg':
+        return 'image/svg+xml'
+    return None
+
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve_react(path):
-    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
-        return send_from_directory(app.static_folder, path)
+    if path.startswith("api/"):
+        return jsonify({"error": "API route not found", "success": False}), 404
+    target_path = os.path.join(app.static_folder, path)
+    if path != "" and os.path.exists(target_path) and not os.path.isdir(target_path):
+        mimetype = get_mimetype(path)
+        return send_from_directory(app.static_folder, path, mimetype=mimetype)
     elif os.path.exists(os.path.join(app.static_folder, "index.html")):
-        return send_from_directory(app.static_folder, "index.html")
+        return send_from_directory(app.static_folder, "index.html", mimetype="text/html; charset=utf-8")
     else:
         # Fallback to legacy index or basic info if dist is not built yet
         if os.path.exists("templates/index.html"):
             return render_template("index.html")
         return "React Frontend is building or ready on Vite Dev Server (port 5173)."
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
