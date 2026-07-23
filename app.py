@@ -28,7 +28,7 @@ mimetypes.add_type('application/json', '.json')
 mimetypes.add_type('application/wasm', '.wasm')
 mimetypes.add_type('image/svg+xml', '.svg')
 
-app = Flask(__name__, static_folder="dist", static_url_path="")
+app = Flask(__name__, static_folder=None)
 CORS(app)  # Enable CORS for React frontend
 
 @app.after_request
@@ -218,17 +218,19 @@ def get_mimetype(filepath):
 def serve_react(path):
     if path.startswith("api/"):
         return jsonify({"error": "API route not found", "success": False}), 404
-    target_path = os.path.join(app.static_folder, path)
+    static_folder = "dist"
+    target_path = os.path.join(static_folder, path)
     if path != "" and os.path.exists(target_path) and not os.path.isdir(target_path):
         mimetype = get_mimetype(path)
-        return send_from_directory(app.static_folder, path, mimetype=mimetype)
-    elif os.path.exists(os.path.join(app.static_folder, "index.html")):
-        return send_from_directory(app.static_folder, "index.html", mimetype="text/html; charset=utf-8")
+        return send_from_directory(static_folder, path, mimetype=mimetype)
+    elif os.path.exists(os.path.join(static_folder, "index.html")):
+        return send_from_directory(static_folder, "index.html", mimetype="text/html; charset=utf-8")
     else:
         # Fallback to legacy index or basic info if dist is not built yet
         if os.path.exists("templates/index.html"):
             return render_template("index.html")
         return "React Frontend is building or ready on Vite Dev Server (port 5173)."
+
 
 
 if __name__ == "__main__":
