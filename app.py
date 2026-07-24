@@ -71,8 +71,9 @@ def save_history():
     except Exception as e:
         print("Error saving history:", e)
 
-# Device
-device = "cuda" if torch.cuda.is_available() else "cpu"
+# Device & Memory Optimization
+device = "cpu"
+torch.set_num_threads(1)  # Reduce CPU thread overhead to save RAM
 
 # Lazy loading
 model = None
@@ -81,10 +82,11 @@ preprocess = None
 def load_model():
     global model, preprocess
     if model is None:
-        model, preprocess = clip.load("ViT-B/32", device=device)
+        model, preprocess = clip.load("ViT-B/32", device=device, jit=False)
         model.eval()
 
 def ai_probability(img):
+    import gc
     load_model()
 
     image = preprocess(Image.fromarray(img)).unsqueeze(0).to(device)
@@ -97,7 +99,9 @@ def ai_probability(img):
         text_features = model.encode_text(text)
         similarity = (image_features @ text_features.T).softmax(dim=-1)
 
-    return similarity[0][1].item()
+    prob = similarity[0][1].item()
+    gc.collect()  # Force free unused RAM memory
+    return prob
 
 def analyze_video(path):
     cap = cv2.VideoCapture(path)
