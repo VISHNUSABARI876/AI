@@ -128,6 +128,13 @@ def analyze_video(path):
 def uploaded_file(filename):
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
+@app.route("/vite.svg")
+def vite_svg():
+    # Return a simple SVG favicon to avoid 404 on favicon request
+    svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#00f2fe"/><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-size="16" fill="#0a0a1a" font-family="sans-serif" font-weight="bold">G</text></svg>'
+    from flask import Response
+    return Response(svg, mimetype='image/svg+xml')
+
 @app.route("/api/analyze", methods=["POST"], strict_slashes=False)
 def api_analyze():
     if "file" not in request.files:
@@ -216,8 +223,13 @@ def get_mimetype(filepath):
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve_react(path):
-    if path.startswith("api/"):
+    # Safety guard: never catch API or uploads routes here
+    if path.startswith("api/") or path == "api":
         return jsonify({"error": "API route not found", "success": False}), 404
+    if path.startswith("uploads/"):
+        filename = path[len("uploads/"):]
+        return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+
     static_folder = "dist"
     target_path = os.path.join(static_folder, path)
     if path != "" and os.path.exists(target_path) and not os.path.isdir(target_path):
