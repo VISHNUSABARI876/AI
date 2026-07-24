@@ -29,6 +29,7 @@ mimetypes.add_type('application/wasm', '.wasm')
 mimetypes.add_type('image/svg+xml', '.svg')
 
 app = Flask(__name__, static_folder=None)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'godseye-dev-secret-change-in-prod')
 CORS(app)  # Enable CORS for React frontend
 
 @app.after_request
@@ -47,8 +48,8 @@ def set_mime_types(response):
     return response
 
 
-# Upload folder
-UPLOAD_FOLDER = "uploads"
+# Upload folder — use /tmp on Render (ephemeral) or local uploads/ in dev
+UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
@@ -246,6 +247,8 @@ def serve_react(path):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
+    app.run(host="0.0.0.0", port=port, debug=debug)
 
 

@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: godseye-ai
+    runtime: python
+    region: oregon
+
+    # Build: install Python deps + Node deps + compile React frontend
+    buildCommand: |
+      pip install -r requirements.txt
+      curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+      apt-get install -y nodejs
+      npm install
+      npm run build
+
+    # Start: Gunicorn serves both Flask API + built React dist/
+    startCommand: gunicorn app:app --workers 1 --timeout 120 --bind 0.0.0.0:$PORT
+
+    # Environment variables
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true        # Render auto-generates a secure random value
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: UPLOAD_FOLDER
+        value: "/tmp/uploads"      # Use /tmp so uploads work on ephemeral filesystem
+
+    # Health check — Render pings this to verify the service is up
+    healthCheckPath: /
+
+    # Render Starter plan ($7/mo) recommended for CLIP model (~500MB RAM needed)
+    # plan: starter
