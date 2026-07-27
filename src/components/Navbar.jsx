@@ -30,12 +30,7 @@ const Navbar = ({ toggleSidebar, sidebarOpen }) => {
       </div>
 
       <div className="flex items-center gap-4">
-        <div className="hidden md:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-xs text-blue-400 font-semibold">
-          <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-          Neural Engine Active
-        </div>
-
-        <button
+<button
           onClick={toggleTheme}
           className="p-2.5 rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[rgba(255,255,255,0.06)] transition-all"
           title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}

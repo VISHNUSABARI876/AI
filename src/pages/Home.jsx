@@ -58,11 +58,7 @@ const Home = () => {
     <div className="space-y-12 pb-8">
       {/* Hero Section */}
       <section className="text-center py-12 relative overflow-hidden">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass-card border-blue-500/30 text-xs font-semibold text-blue-400 mb-6">
-          <Sparkles size={15} /> Deep Learning Media Verification Engine
-        </div>
-
-        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-[var(--text-primary)] max-w-3xl mx-auto leading-tight">
+<h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-[var(--text-primary)] max-w-3xl mx-auto leading-tight">
           Detect AI-Generated <br />
           <span className="text-blue-500">
             Images & Videos Instantly
