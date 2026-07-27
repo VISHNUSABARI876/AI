@@ -8,6 +8,7 @@ import os
 import time
 import json
 import mimetypes
+import traceback
 
 # Fix Windows MIME type registration for JavaScript & CSS modules
 mimetypes.init()
@@ -142,74 +143,86 @@ def vite_svg():
 
 @app.route("/api/analyze", methods=["POST"], strict_slashes=False)
 def api_analyze():
-    if "file" not in request.files:
-        return jsonify({"error": "No file part in request"}), 400
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "No file part in request"}), 400
 
-    file = request.files["file"]
-    if file.filename == "":
-        return jsonify({"error": "No file selected"}), 400
+        file = request.files["file"]
+        if file.filename == "":
+            return jsonify({"error": "No file selected"}), 400
 
-    filename = file.filename
-    path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-    file.save(path)
+        filename = file.filename
+        path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+        file.save(path)
 
-    ext = filename.lower().split(".")[-1]
-    is_image = ext in ["jpg", "jpeg", "png", "webp", "bmp"]
+        ext = filename.lower().split(".")[-1]
+        is_image = ext in ["jpg", "jpeg", "png", "webp", "bmp"]
 
-    if is_image:
-        img = cv2.imread(path)
-        if img is None:
-            return jsonify({"error": "Could not read image file"}), 400
-        prob = ai_probability(img)
-        ai_frames = int(prob * 100)
-        real_percent = 100 - ai_frames
-        media_type = "image"
-    else:
-        ai_frames, real_percent = analyze_video(path)
-        media_type = "video"
+        if is_image:
+            img = cv2.imread(path)
+            if img is None:
+                return jsonify({"error": "Could not read image file"}), 400
+            prob = ai_probability(img)
+            ai_frames = int(prob * 100)
+            real_percent = 100 - ai_frames
+            media_type = "image"
+        else:
+            ai_frames, real_percent = analyze_video(path)
+            media_type = "video"
 
-    result_label = "AI Generated Content" if ai_frames >= 50 else "Real Content"
+        result_label = "AI Generated Content" if ai_frames >= 50 else "Real Content"
 
-    history_item = {
-        "id": int(time.time() * 1000),
-        "filename": filename,
-        "file_url": f"/uploads/{filename}",
-        "media_type": media_type,
-        "result": result_label,
-        "ai_percent": ai_frames,
-        "real_percent": real_percent,
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-    }
+        history_item = {
+            "id": int(time.time() * 1000),
+            "filename": filename,
+            "file_url": f"/uploads/{filename}",
+            "media_type": media_type,
+            "result": result_label,
+            "ai_percent": ai_frames,
+            "real_percent": real_percent,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
 
-    detection_history.insert(0, history_item)
-    save_history()
+        detection_history.insert(0, history_item)
+        save_history()
 
-    return jsonify({
-        "success": True,
-        "data": history_item
-    })
+        return jsonify({
+            "success": True,
+            "data": history_item
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e), "success": False}), 500
 
 @app.route("/api/history", methods=["GET"], strict_slashes=False)
 def api_history():
-    return jsonify({
-        "success": True,
-        "history": detection_history
-    })
+    try:
+        return jsonify({
+            "success": True,
+            "history": detection_history
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e), "success": False}), 500
 
 @app.route("/api/stats", methods=["GET"], strict_slashes=False)
 def api_stats():
-    total_scans = len(detection_history)
-    ai_count = sum(1 for item in detection_history if item["result"] == "AI Generated Content")
-    real_count = total_scans - ai_count
-    avg_ai_score = round(sum(item["ai_percent"] for item in detection_history) / max(1, total_scans), 1)
+    try:
+        total_scans = len(detection_history)
+        ai_count = sum(1 for item in detection_history if item["result"] == "AI Generated Content")
+        real_count = total_scans - ai_count
+        avg_ai_score = round(sum(item["ai_percent"] for item in detection_history) / max(1, total_scans), 1)
 
-    return jsonify({
-        "success": True,
-        "total_scans": total_scans,
-        "ai_count": ai_count,
-        "real_count": real_count,
-        "avg_ai_score": avg_ai_score
-    })
+        return jsonify({
+            "success": True,
+            "total_scans": total_scans,
+            "ai_count": ai_count,
+            "real_count": real_count,
+            "avg_ai_score": avg_ai_score
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e), "success": False}), 500
 
 def get_mimetype(filepath):
     ext = os.path.splitext(filepath)[1].lower()
